@@ -24,7 +24,7 @@
     "claude-pro",
     "claude-max"
   ],
-  "author": "Matt Mahony",
+  "author": "mattdotbuild",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/mattdotbuild/claude-usage-tray/issues"
