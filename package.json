@@ -1,0 +1,80 @@
+{
+  "name": "claude-usage-tray",
+  "version": "1.0.0",
+  "description": "Windows/macOS system tray app showing Claude.ai Max plan usage",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "generate-icon": "node generate-icon.js",
+    "build": "npm run generate-icon && electron-builder --win",
+    "build:mac": "npm run generate-icon && electron-builder --mac",
+    "build:all": "npm run generate-icon && electron-builder --win --mac",
+    "release": "npm run generate-icon && electron-builder --win --publish always"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mattdotbuild/claude-usage-tray.git"
+  },
+  "keywords": [
+    "claude",
+    "anthropic",
+    "usage",
+    "tray",
+    "electron",
+    "claude-pro",
+    "claude-max"
+  ],
+  "author": "Matt Mahony",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/mattdotbuild/claude-usage-tray/issues"
+  },
+  "homepage": "https://github.com/mattdotbuild/claude-usage-tray#readme",
+  "dependencies": {
+    "canvas": "^3.0.0",
+    "electron-updater": "^6.3.0"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.claude-usage-tray",
+    "productName": "Claude Usage",
+    "icon": "assets/icon.png",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "runAfterFinish": true
+    },
+    "forceCodeSigning": false,
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.png"
+    },
+    "files": [
+      "**/*",
+      "!generate-icon.js"
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "mattdotbuild",
+      "repo": "claude-usage-tray"
+    }
+  }
+}

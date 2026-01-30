@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Claude Usage - Settings</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-deep: #0f1729;
+      --bg-surface: #162036;
+      --bg-elevated: #1e2a45;
+      --bg-hover: #263352;
+      --border-subtle: rgba(148, 180, 255, 0.08);
+      --border-default: rgba(148, 180, 255, 0.15);
+      --border-strong: rgba(148, 180, 255, 0.25);
+      --text-primary: #ffffff;
+      --text-secondary: #c4d0e9;
+      --text-tertiary: #8194b8;
+      --accent: #f59e0b;
+      --accent-muted: rgba(245, 158, 11, 0.18);
+      --accent-glow: rgba(245, 158, 11, 0.45);
+      --success: #10b981;
+      --success-muted: rgba(16, 185, 129, 0.18);
+      --danger: #ef4444;
+      --danger-muted: rgba(239, 68, 68, 0.15);
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 14px;
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+      --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+      --shadow-glow: 0 0 20px var(--accent-glow);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-deep);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+      -webkit-app-region: drag;
+    }
+
+    /* Ambient background effect */
+    body::before {
+      content: '';
+      position: fixed;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background:
+        radial-gradient(ellipse at 20% 10%, rgba(99, 140, 255, 0.08) 0%, transparent 50%),
+        radial-gradient(ellipse at 85% 85%, rgba(245, 158, 11, 0.05) 0%, transparent 50%);
+      pointer-events: none;
+      animation: ambientShift 20s ease-in-out infinite;
+    }
+
+    @keyframes ambientShift {
+      0%, 100% { transform: translate(0, 0) rotate(0deg); }
+      33% { transform: translate(2%, 1%) rotate(1deg); }
+      66% { transform: translate(-1%, 2%) rotate(-1deg); }
+    }
+
+    /* Noise texture overlay */
+    body::after {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+      opacity: 0.02;
+      pointer-events: none;
+    }
+
+    .container {
+      position: relative;
+      z-index: 1;
+      max-width: 100%;
+      padding: 0;
+      -webkit-app-region: no-drag;
+    }
+
+    /* Header */
+    .header {
+      padding: 20px 24px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      background: linear-gradient(180deg, var(--bg-surface) 0%, transparent 100%);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    .header-content {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .logo {
+      width: 46px;
+      height: 46px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .logo svg {
+      width: 46px;
+      height: 46px;
+      filter: drop-shadow(0 0 10px var(--accent-glow));
+      transition: transform 0.2s ease, filter 0.2s ease;
+    }
+
+    .logo-track {
+      stroke: rgba(148, 180, 255, 0.2);
+    }
+
+    .logo-gauge {
+      /* 270° arc length ≈ 179, 70% fill ≈ 125 */
+      stroke-dasharray: 125 179;
+      animation: gaugeShift 8s ease-in-out infinite;
+    }
+
+    @keyframes gaugeShift {
+      0%, 100% { stroke-dasharray: 125 179; }
+      25% { stroke-dasharray: 145 179; }
+      50% { stroke-dasharray: 100 179; }
+      75% { stroke-dasharray: 135 179; }
+    }
+
+    .logo-bolt {
+      filter: drop-shadow(0 0 6px var(--accent-glow));
+    }
+
+    .logo:hover svg {
+      transform: scale(1.08);
+      filter: drop-shadow(0 0 16px var(--accent-glow));
+    }
+
+    .header-text h1 {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      color: var(--text-primary);
+    }
+
+    .header-text .subtitle {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--text-tertiary);
+      margin-top: 2px;
+      letter-spacing: 0.5px;
+    }
+
+    /* Main content */
+    .main {
+      padding: 20px 24px 24px;
+    }
+
+    /* Section */
+    .section {
+      margin-bottom: 24px;
+      animation: sectionReveal 0.5s ease-out backwards;
+    }
+
+    .section:nth-child(1) { animation-delay: 0.1s; }
+    .section:nth-child(2) { animation-delay: 0.2s; }
+    .section:nth-child(3) { animation-delay: 0.3s; }
+
+    @keyframes sectionReveal {
+      from {
+        opacity: 0;
+        transform: translateY(12px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      padding-left: 2px;
+    }
+
+    .section-icon {
+      width: 18px;
+      height: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      opacity: 0.6;
+    }
+
+    .section-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: var(--text-tertiary);
+    }
+
+    .section-line {
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, var(--border-subtle) 0%, transparent 100%);
+      margin-left: 12px;
+    }
+
+    /* Card */
+    .card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      transition: border-color 0.2s ease;
+    }
+
+    .card:hover {
+      border-color: var(--border-default);
+    }
+
+    /* Setting Row */
+    .setting-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--border-subtle);
+      transition: background 0.15s ease;
+    }
+
+    .setting-row:last-child {
+      border-bottom: none;
+    }
+
+    .setting-row:hover {
+      background: var(--bg-hover);
+    }
+
+    .setting-info {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .setting-label {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .setting-description {
+      font-size: 11px;
+      color: var(--text-tertiary);
+    }
+
+    /* Toggle Switch */
+    .toggle {
+      position: relative;
+      width: 42px;
+      height: 24px;
+      flex-shrink: 0;
+    }
+
+    .toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-track {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      border-radius: 12px;
+    }
+
+    .toggle-thumb {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 2px;
+      top: 2px;
+      background: var(--text-secondary);
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      border-radius: 9px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .toggle input:checked + .toggle-track {
+      background: var(--success-muted);
+      border-color: var(--success);
+    }
+
+    .toggle input:checked + .toggle-track .toggle-thumb {
+      transform: translateX(18px);
+      background: var(--success);
+      box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+    }
+
+    .toggle input:focus + .toggle-track {
+      box-shadow: 0 0 0 2px var(--accent-muted);
+    }
+
+    /* Select */
+    .select-wrapper {
+      position: relative;
+    }
+
+    .select-wrapper::after {
+      content: '';
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 0;
+      height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 5px solid var(--text-tertiary);
+      pointer-events: none;
+      transition: border-color 0.15s ease;
+    }
+
+    .select-wrapper:hover::after {
+      border-top-color: var(--text-secondary);
+    }
+
+    select {
+      appearance: none;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      padding: 8px 32px 8px 12px;
+      color: var(--text-primary);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      cursor: pointer;
+      outline: none;
+      transition: all 0.15s ease;
+      min-width: 120px;
+    }
+
+    select:hover {
+      border-color: var(--border-strong);
+      background: var(--bg-hover);
+    }
+
+    select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-muted);
+    }
+
+    select option {
+      background: var(--bg-surface);
+      color: var(--text-primary);
+    }
+
+    /* Accounts List */
+    .accounts-list {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .account-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      position: relative;
+    }
+
+    .account-item:last-child {
+      border-bottom: none;
+    }
+
+    .account-item::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: transparent;
+      transition: background 0.2s ease;
+    }
+
+    .account-item:hover {
+      background: var(--bg-hover);
+    }
+
+    .account-item.active {
+      background: var(--success-muted);
+    }
+
+    .account-item.active::before {
+      background: var(--success);
+      box-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
+    }
+
+    .account-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .account-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-md);
+      background:
+        linear-gradient(135deg, var(--accent) 0%, #d97706 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--bg-deep);
+      flex-shrink: 0;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      position: relative;
+      box-shadow:
+        0 2px 8px rgba(245, 158, 11, 0.25),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    }
+
+    .account-avatar::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: linear-gradient(180deg, rgba(255,255,255,0.15) 0%, transparent 50%);
+      pointer-events: none;
+    }
+
+    .account-item:hover .account-avatar {
+      transform: scale(1.05);
+    }
+
+    .account-item.active .account-avatar {
+      background: linear-gradient(135deg, var(--success) 0%, #059669 100%);
+      box-shadow:
+        0 0 16px rgba(16, 185, 129, 0.4),
+        0 2px 8px rgba(16, 185, 129, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    }
+
+    .account-details {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .account-name-input {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      padding: 4px 8px;
+      margin: -4px -8px;
+      width: calc(100% + 16px);
+      max-width: 180px;
+      outline: none;
+      transition: all 0.15s ease;
+    }
+
+    .account-name-input:hover {
+      background: rgba(255, 255, 255, 0.03);
+      border-color: var(--border-subtle);
+    }
+
+    .account-name-input:focus {
+      background: var(--bg-elevated);
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-muted);
+    }
+
+    .account-org {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--text-tertiary);
+      margin-top: 2px;
+      padding-left: 1px;
+      text-overflow: ellipsis;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    .account-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: var(--bg-elevated);
+      color: var(--text-tertiary);
+      border: 1px solid var(--border-subtle);
+      transition: all 0.2s ease;
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--text-tertiary);
+    }
+
+    .account-item.active .status-badge {
+      background: var(--success-muted);
+      border-color: var(--success);
+      color: var(--success);
+    }
+
+    .account-item.active .status-dot {
+      background: var(--success);
+      box-shadow: 0 0 6px var(--success);
+      animation: statusPulse 2s ease-in-out infinite;
+    }
+
+    @keyframes statusPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .btn-remove {
+      opacity: 0;
+      background: transparent;
+      border: none;
+      color: var(--text-tertiary);
+      cursor: pointer;
+      padding: 6px;
+      border-radius: var(--radius-sm);
+      transition: all 0.15s ease;
+      font-size: 14px;
+      line-height: 1;
+    }
+
+    .account-item:hover .btn-remove {
+      opacity: 1;
+    }
+
+    .btn-remove:hover {
+      color: var(--danger);
+      background: var(--danger-muted);
+    }
+
+
+    /* Add Account Button */
+    .add-account-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 14px;
+      margin-top: 12px;
+      background: transparent;
+      border: 1px dashed var(--border-default);
+      border-radius: var(--radius-md);
+      color: var(--text-tertiary);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .add-account-btn:hover {
+      border-color: var(--accent);
+      border-style: solid;
+      color: var(--accent);
+      background: var(--accent-muted);
+    }
+
+    .add-account-btn .icon {
+      font-size: 16px;
+      transition: transform 0.2s ease;
+    }
+
+    .add-account-btn:hover .icon {
+      transform: rotate(90deg);
+    }
+
+    /* Empty State */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 24px;
+      text-align: center;
+    }
+
+    .empty-icon {
+      width: 56px;
+      height: 56px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      margin-bottom: 16px;
+      opacity: 0.6;
+    }
+
+    .empty-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 4px;
+    }
+
+    .empty-description {
+      font-size: 12px;
+      color: var(--text-tertiary);
+    }
+
+    /* Footer */
+    .footer {
+      padding: 16px 24px 20px;
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .footer-version {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--text-tertiary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .footer-version::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      background: var(--success);
+      border-radius: 50%;
+      box-shadow: 0 0 6px var(--success);
+    }
+
+    .footer-link {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--text-tertiary);
+      text-decoration: none;
+      padding: 4px 10px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-subtle);
+      transition: all 0.15s ease;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .footer-link:hover {
+      color: var(--text-secondary);
+      border-color: var(--border-default);
+      background: var(--bg-hover);
+    }
+
+    .footer-link svg {
+      width: 12px;
+      height: 12px;
+      fill: currentColor;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: rgba(148, 180, 255, 0.05);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: rgba(148, 180, 255, 0.2);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(148, 180, 255, 0.3);
+    }
+
+    /* Focus visible */
+    *:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    /* Reduced motion */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <div class="header-content">
+        <div class="logo">
+          <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="bolt-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#fbbf24"/>
+                <stop offset="100%" style="stop-color:#f59e0b"/>
+              </linearGradient>
+              <linearGradient id="gauge-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#f59e0b"/>
+                <stop offset="100%" style="stop-color:#d97706"/>
+              </linearGradient>
+            </defs>
+            <!-- Gauge track: 270° arc from top-left to bottom-left -->
+            <path
+              class="logo-track"
+              d="M 23.13 23.13 A 38 38 0 1 1 23.13 76.87"
+              fill="none"
+              stroke-width="6"
+              stroke-linecap="round"
+            />
+            <!-- Gauge fill: 70% of 270° arc -->
+            <path
+              class="logo-gauge"
+              d="M 23.13 23.13 A 38 38 0 1 1 23.13 76.87"
+              fill="none"
+              stroke="url(#gauge-gradient)"
+              stroke-width="6"
+              stroke-linecap="round"
+            />
+            <!-- Lightning bolt: exact match to window icon -->
+            <path
+              class="logo-bolt"
+              fill="url(#bolt-gradient)"
+              d="M 56 26 L 36 54 L 50 54 L 44 74 L 64 44 L 52 44 L 56 26 Z"
+            />
+          </svg>
+        </div>
+        <div class="header-text">
+          <h1>Claude Usage</h1>
+          <div class="subtitle">SETTINGS</div>
+        </div>
+      </div>
+    </header>
+
+    <main class="main">
+      <section class="section">
+        <div class="section-header">
+          <span class="section-icon">◐</span>
+          <span class="section-title">Display</span>
+          <div class="section-line"></div>
+        </div>
+        <div class="card">
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Show remaining percentage</div>
+              <div class="setting-description">Display budget remaining instead of used</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="showRemaining" checked>
+              <div class="toggle-track">
+                <div class="toggle-thumb"></div>
+              </div>
+            </label>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Refresh interval</div>
+              <div class="setting-description">How often to update usage data</div>
+            </div>
+            <div class="select-wrapper">
+              <select id="refreshInterval">
+                <option value="1">1 min</option>
+                <option value="5" selected>5 min</option>
+                <option value="10">10 min</option>
+                <option value="15">15 min</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Start on login</div>
+              <div class="setting-description">Automatically launch when Windows starts</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="startOnLogin">
+              <div class="toggle-track">
+                <div class="toggle-thumb"></div>
+              </div>
+            </label>
+          </div>
+
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-header">
+          <span class="section-icon">◉</span>
+          <span class="section-title">Accounts</span>
+          <div class="section-line"></div>
+        </div>
+        <div class="card">
+          <div class="accounts-list" id="accountsList">
+            <!-- Accounts will be populated here -->
+          </div>
+        </div>
+        <button class="add-account-btn" id="addAccountBtn">
+          <span class="icon">+</span>
+          Add Account
+        </button>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-version">v1.0.0</div>
+      <a href="https://github.com/mattdotbuild/claude-usage-tray" target="_blank" class="footer-link">
+        <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+        </svg>
+        GitHub
+      </a>
+    </footer>
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+
+    // Load settings
+    ipcRenderer.invoke('get-settings').then(settings => {
+      document.getElementById('showRemaining').checked = settings.showRemaining !== false;
+      document.getElementById('refreshInterval').value = settings.refreshInterval || '5';
+      document.getElementById('startOnLogin').checked = settings.startOnLogin || false;
+      renderAccounts(settings.accounts || []);
+    });
+
+    // Save settings on change
+    document.getElementById('showRemaining').addEventListener('change', (e) => {
+      ipcRenderer.send('update-setting', { key: 'showRemaining', value: e.target.checked });
+    });
+
+    document.getElementById('refreshInterval').addEventListener('change', (e) => {
+      ipcRenderer.send('update-setting', { key: 'refreshInterval', value: parseInt(e.target.value) });
+    });
+
+    document.getElementById('startOnLogin').addEventListener('change', (e) => {
+      ipcRenderer.send('update-setting', { key: 'startOnLogin', value: e.target.checked });
+    });
+
+    // Add account
+    document.getElementById('addAccountBtn').addEventListener('click', () => {
+      ipcRenderer.send('add-account');
+    });
+
+    // Render accounts
+    function renderAccounts(accounts) {
+      const container = document.getElementById('accountsList');
+
+      if (!accounts || accounts.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">👤</div>
+            <div class="empty-title">No accounts yet</div>
+            <div class="empty-description">Add a Claude account to start tracking usage</div>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = accounts.map((account, index) => `
+        <div class="account-item ${account.active ? 'active' : ''}" data-index="${index}">
+          <div class="account-info">
+            <div class="account-avatar">${(account.name || account.orgName || 'A')[0].toUpperCase()}</div>
+            <div class="account-details">
+              <input
+                type="text"
+                class="account-name-input"
+                value="${(account.name || account.orgName || 'Account ' + (index + 1)).replace(/"/g, '&quot;')}"
+                placeholder="Account name"
+                spellcheck="false"
+              >
+              <div class="account-org">${account.orgName || 'Claude Account'}</div>
+            </div>
+          </div>
+          <div class="account-actions">
+            <div class="status-badge">
+              <span class="status-dot"></span>
+              ${account.active ? 'Active' : 'Inactive'}
+            </div>
+            <button class="btn-remove" title="Remove account">✕</button>
+          </div>
+        </div>
+      `).join('');
+
+      // Click on account to set active
+      container.querySelectorAll('.account-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+          if (e.target.classList.contains('account-name-input') ||
+              e.target.classList.contains('btn-remove')) return;
+          const index = parseInt(item.dataset.index);
+          ipcRenderer.send('set-active-account', index);
+        });
+      });
+
+      container.querySelectorAll('.account-name-input').forEach(input => {
+        input.addEventListener('blur', (e) => {
+          const index = parseInt(e.target.closest('.account-item').dataset.index);
+          ipcRenderer.send('rename-account', { index, name: e.target.value });
+        });
+        input.addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') {
+            e.target.blur();
+          }
+        });
+      });
+
+      container.querySelectorAll('.btn-remove').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const index = parseInt(e.target.closest('.account-item').dataset.index);
+          if (confirm('Remove this account?')) {
+            ipcRenderer.send('remove-account', index);
+          }
+        });
+      });
+
+    }
+
+    // Listen for account updates
+    ipcRenderer.on('accounts-updated', (event, accounts) => {
+      renderAccounts(accounts);
+    });
+  </script>
+</body>
+</html>
