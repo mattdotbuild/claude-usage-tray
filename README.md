@@ -2,7 +2,8 @@
 
 A Windows system tray app that shows your Claude.ai Pro/Max plan Opus-specific usage at a glance.
 
-![Tray Icon](https://img.shields.io/badge/status-working-green)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Me-ff5e5b?logo=ko-fi&logoColor=white)](https://ko-fi.com/D1D81T9K7E)
+![Status](https://img.shields.io/badge/status-working-green)
 ![Platform](https://img.shields.io/badge/platform-Windows-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
