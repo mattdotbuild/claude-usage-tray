@@ -1,10 +1,6 @@
 # Claude Usage Tray
 
-<<<<<<< HEAD
 A Windows system tray app that shows your Claude.ai Pro/Max plan usage at a glance.
-=======
-A Windows/macOS system tray app that shows your Claude.ai Pro/Max plan usage at a glance.
->>>>>>> 8162d3cc363f7e8901a66eb9134bec8696737c90
 
 ![Tray Icon](https://img.shields.io/badge/status-working-green)
 ![Platform](https://img.shields.io/badge/platform-Windows-blue)
