@@ -22,6 +22,40 @@ let appIcon = null;
 // Per-account heartbeat state: Map<accountIndex, { timeout, lastSent, pending }>
 let heartbeatState = new Map();
 
+// Capture all claude.ai cookies from Electron's session as a cookie header string
+async function captureAllCookies() {
+  try {
+    const cookies = await session.defaultSession.cookies.get({ domain: '.claude.ai' });
+    const cookies2 = await session.defaultSession.cookies.get({ domain: 'claude.ai' });
+    const allCookies = new Map();
+    for (const c of [...cookies, ...cookies2]) {
+      allCookies.set(c.name, c.value);
+    }
+    if (allCookies.size === 0) return null;
+    return Array.from(allCookies.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
+  } catch (e) {
+    console.error('Failed to capture cookies:', e.message);
+    return null;
+  }
+}
+
+// Save captured cookies to an account and persist to config
+function saveAccountCookies(accountIndex, cookieStr) {
+  const accounts = config.get('accounts') || [];
+  if (accounts[accountIndex]) {
+    accounts[accountIndex].allCookies = cookieStr;
+    config.set('accounts', accounts);
+  }
+}
+
+// Build auth for API calls using stored per-account cookies
+function buildAuth(account) {
+  if (account.allCookies) {
+    return { cookies: account.allCookies };
+  }
+  return account.sessionKey;
+}
+
 // Generate app icon (matches the settings page logo)
 function createAppIcon() {
   const size = 256;
@@ -180,6 +214,99 @@ function createErrorIcon() {
   return nativeImage.createFromBuffer(buffer);
 }
 
+// Attempt to silently refresh an expired session key
+async function refreshSessionKey(accountIndex) {
+  const accounts = config.get('accounts') || [];
+  const account = accounts[accountIndex];
+  if (!account) return null;
+
+  console.log(`Session refresh: attempting silent refresh for account ${accountIndex}`);
+
+  // Open a hidden window to claude.ai - if the user's auth is still valid,
+  // the server will set a fresh sessionKey cookie automatically
+  const hiddenWindow = new BrowserWindow({
+    width: 800,
+    height: 600,
+    show: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true
+    }
+  });
+
+  try {
+    await hiddenWindow.loadURL('https://claude.ai');
+
+    // Give the page a moment to settle and set cookies
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    // Check if we landed on the login page (session truly expired)
+    const currentURL = hiddenWindow.webContents.getURL();
+    if (currentURL.includes('/login')) {
+      console.log('Session refresh: redirected to login page, session is truly expired');
+      if (!hiddenWindow.isDestroyed()) hiddenWindow.close();
+      return null;
+    }
+
+    const cookies = await session.defaultSession.cookies.get({
+      domain: 'claude.ai',
+      name: 'sessionKey'
+    });
+
+    if (cookies.length > 0 && cookies[0].value) {
+      const newKey = cookies[0].value;
+
+      // Capture ALL cookies and validate they work
+      const cookieStr = await captureAllCookies();
+      const auth = cookieStr ? { cookies: cookieStr } : newKey;
+      try {
+        await getUsage(auth);
+      } catch (e) {
+        console.log('Session refresh: got cookie but API call failed -', e.message);
+        if (!hiddenWindow.isDestroyed()) hiddenWindow.close();
+        return null;
+      }
+
+      console.log('Session refresh: got valid new session key');
+      const freshAccounts = config.get('accounts') || [];
+      freshAccounts[accountIndex].sessionKey = newKey;
+      if (cookieStr) freshAccounts[accountIndex].allCookies = cookieStr;
+      config.set('accounts', freshAccounts);
+
+      if (!hiddenWindow.isDestroyed()) hiddenWindow.close();
+      return newKey;
+    }
+
+    console.log('Session refresh: no cookie found');
+    if (!hiddenWindow.isDestroyed()) hiddenWindow.close();
+    return null;
+  } catch (error) {
+    console.error('Session refresh: failed -', error.message);
+    if (!hiddenWindow.isDestroyed()) hiddenWindow.close();
+    return null;
+  }
+}
+
+// Manual session refresh triggered from tray menu
+async function manualRefreshSession(accountIndex) {
+  const accounts = config.get('accounts') || [];
+  const label = accounts[accountIndex]?.name || accounts[accountIndex]?.orgName || `Account ${accountIndex + 1}`;
+
+  tray.setImage(createErrorIcon());
+  tray.setToolTip(`Claude Usage - Refreshing session for ${label}...`);
+
+  const newKey = await refreshSessionKey(accountIndex);
+  if (newKey) {
+    console.log(`Manual refresh: success for ${label}`);
+    updateTray();
+  } else {
+    console.log(`Manual refresh: failed for ${label}, opening login window`);
+    tray.setToolTip('Claude Usage - Refresh failed, opening login...');
+    // Silent refresh didn't work - open visible login window to update this account
+    reloginAccount(accountIndex);
+  }
+}
+
 // Get active account
 function getActiveAccount() {
   const accounts = config.get('accounts') || [];
@@ -191,15 +318,16 @@ async function updateTray() {
   const account = getActiveAccount();
   const settings = config.get('settings') || {};
   const showRemaining = settings.showRemaining !== false;
-  
+
   if (!account || !account.sessionKey) {
     tray.setImage(createErrorIcon());
     tray.setToolTip('Claude Usage - No account configured');
     return;
   }
-  
+
   try {
-    const usage = await getUsage(account.sessionKey);
+    const auth = buildAuth(account);
+    const usage = await getUsage(auth);
 
     // Display based on user preference
     const sessionDisplay = showRemaining ? usage.session : usage.sessionUsedPct;
@@ -236,11 +364,29 @@ async function updateTray() {
     tray.setToolTip(`Claude Usage${account.name ? ' - ' + account.name : ''}\nSession: ${sessionDisplay}% ${label}\nWeekly: ${weeklyDisplay}% ${label}${resetText}${heartbeatText}`);
   } catch (error) {
     console.error('Failed to fetch usage:', error.message);
-    tray.setImage(createErrorIcon());
-    
+
     if (error.message === 'SESSION_EXPIRED') {
-      tray.setToolTip('Claude Usage - Session expired! Right-click → Settings to fix.');
+      // Try to silently refresh the session before showing error
+      const accounts = config.get('accounts') || [];
+      const accountIndex = accounts.findIndex(a => a === account || (a.sessionKey === account.sessionKey && a.active));
+
+      if (accountIndex >= 0) {
+        tray.setImage(createErrorIcon());
+        tray.setToolTip('Claude Usage - Refreshing session...');
+
+        const newKey = await refreshSessionKey(accountIndex);
+        if (newKey) {
+          // refreshSessionKey already validated the key works via getUsage,
+          // so just re-run updateTray with the fresh account data
+          console.log('Session auto-refreshed successfully');
+          return updateTray();
+        }
+      }
+
+      tray.setImage(createErrorIcon());
+      tray.setToolTip('Claude Usage - Session expired! Right-click → Refresh Session or Settings to re-login.');
     } else {
+      tray.setImage(createErrorIcon());
       tray.setToolTip(`Claude Usage - Error: ${error.message}`);
     }
   }
@@ -281,7 +427,8 @@ async function scheduleAccountHeartbeat(index, account) {
   if (!settings.heartbeatEnabled) return;
 
   try {
-    const usage = await getUsage(account.sessionKey);
+    const auth = buildAuth(account);
+    const usage = await getUsage(auth);
     const now = Date.now();
     const label = account.name || account.orgName || `Account ${index + 1}`;
 
@@ -329,8 +476,9 @@ async function performAccountHeartbeat(index) {
   const label = account.name || account.orgName || `Account ${index + 1}`;
 
   try {
+    const auth = buildAuth(account);
     console.log(`Heartbeat [${label}]: sending ping...`);
-    await sendHeartbeat(account.sessionKey);
+    await sendHeartbeat(auth);
     state.lastSent = Date.now();
     console.log(`Heartbeat [${label}]: success`);
     heartbeatState.set(index, state);
@@ -342,6 +490,28 @@ async function performAccountHeartbeat(index) {
     scheduleAccountHeartbeat(index, account);
   } catch (error) {
     console.error(`Heartbeat [${label}]: failed -`, error.message);
+
+    if (error.message === 'SESSION_EXPIRED') {
+      console.log(`Heartbeat [${label}]: attempting session refresh...`);
+      const newKey = await refreshSessionKey(index);
+      if (newKey) {
+        console.log(`Heartbeat [${label}]: session refreshed, retrying heartbeat`);
+        try {
+          const refreshedAuth = buildAuth(accounts[index]);
+          await sendHeartbeat(refreshedAuth);
+          state.lastSent = Date.now();
+          console.log(`Heartbeat [${label}]: success after refresh`);
+          heartbeatState.set(index, state);
+          const refreshedAccounts = config.get('accounts') || [];
+          if (refreshedAccounts[index]?.active) await updateTray();
+          scheduleAccountHeartbeat(index, refreshedAccounts[index]);
+          return;
+        } catch (retryError) {
+          console.error(`Heartbeat [${label}]: retry after refresh also failed -`, retryError.message);
+        }
+      }
+    }
+
     heartbeatState.set(index, state);
     // Retry in 5 minutes
     state.timeout = setTimeout(() => performAccountHeartbeat(index), 5 * 60 * 1000);
@@ -354,6 +524,97 @@ function clearAllHeartbeats() {
     if (state.timeout) clearTimeout(state.timeout);
   }
   heartbeatState.clear();
+}
+
+// Open login window to re-authenticate an existing account (updates in place)
+async function reloginAccount(accountIndex) {
+  // Clear claude.ai cookies so user can log in fresh
+  try {
+    const cookies = await session.defaultSession.cookies.get({ domain: 'claude.ai' });
+    for (const cookie of cookies) {
+      const url = `https://${cookie.domain.replace(/^\./, '')}${cookie.path}`;
+      await session.defaultSession.cookies.remove(url, cookie.name);
+    }
+  } catch (e) {
+    console.error('Failed to clear cookies:', e);
+  }
+
+  const loginWindow = new BrowserWindow({
+    width: 1000,
+    height: 700,
+    title: 'Re-authenticate Claude Account',
+    icon: appIcon,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true
+    }
+  });
+
+  loginWindow.setMenu(null);
+  await loginWindow.loadURL('https://claude.ai/login');
+
+  return new Promise((resolve) => {
+    let resolved = false;
+
+    const checkForCookie = async () => {
+      if (resolved || loginWindow.isDestroyed()) return false;
+
+      try {
+        const cookies = await session.defaultSession.cookies.get({
+          domain: 'claude.ai',
+          name: 'sessionKey'
+        });
+
+        if (cookies.length > 0 && cookies[0].value) {
+          resolved = true;
+          const sessionKey = cookies[0].value;
+
+          // Update the existing account in place with sessionKey + all cookies
+          const accounts = config.get('accounts') || [];
+          if (accounts[accountIndex]) {
+            accounts[accountIndex].sessionKey = sessionKey;
+            const cookieStr = await captureAllCookies();
+            if (cookieStr) accounts[accountIndex].allCookies = cookieStr;
+
+            // Try to refresh org name using stored cookies
+            try {
+              const auth = buildAuth(accounts[accountIndex]);
+              const usage = await getUsage(auth);
+              if (usage.raw && usage.raw.organization_name) {
+                accounts[accountIndex].orgName = usage.raw.organization_name;
+              }
+            } catch (e) {
+              console.error('reloginAccount: failed to get org info:', e.message);
+            }
+
+            config.set('accounts', accounts);
+            console.log(`reloginAccount: updated account ${accountIndex} (${accounts[accountIndex].name || accounts[accountIndex].orgName})`);
+          }
+
+          if (!loginWindow.isDestroyed()) loginWindow.close();
+
+          if (settingsWindow && !settingsWindow.isDestroyed()) {
+            settingsWindow.webContents.send('accounts-updated', config.get('accounts') || []);
+          }
+
+          updateTray();
+          resolve(sessionKey);
+          return true;
+        }
+      } catch (e) {}
+      return false;
+    };
+
+    loginWindow.webContents.on('did-navigate', () => setTimeout(checkForCookie, 1000));
+    loginWindow.webContents.on('did-navigate-in-page', () => setTimeout(checkForCookie, 1000));
+
+    const interval = setInterval(checkForCookie, 2000);
+
+    loginWindow.on('closed', () => {
+      clearInterval(interval);
+      if (!resolved) resolve(null);
+    });
+  });
 }
 
 // Open login window for adding account
@@ -399,25 +660,32 @@ async function addAccount() {
           resolved = true;
           const sessionKey = cookies[0].value;
           
+          // Capture all cookies for this account
+          const cookieStr = await captureAllCookies();
+
           // Get org info for account name
           let orgName = 'Claude Account';
           try {
             const { getUsage } = require('./api');
-            const usage = await getUsage(sessionKey);
+            const auth = cookieStr ? { cookies: cookieStr } : sessionKey;
+            const usage = await getUsage(auth);
             if (usage.raw && usage.raw.organization_name) {
               orgName = usage.raw.organization_name;
             }
-          } catch (e) {}
-          
+          } catch (e) {
+            console.error('addAccount: failed to get org info:', e.message);
+          }
+
           // Add to accounts
           const accounts = config.get('accounts') || [];
-          
+
           // Deactivate all other accounts
           accounts.forEach(a => a.active = false);
-          
+
           // Add new account
           accounts.push({
             sessionKey,
+            allCookies: cookieStr,
             name: '',
             orgName,
             active: true,
@@ -587,6 +855,19 @@ function buildContextMenu() {
     {
       label: 'Refresh',
       click: updateTray
+    },
+    {
+      label: 'Refresh Session',
+      click: async () => {
+        const accounts = config.get('accounts') || [];
+        const activeIndex = accounts.findIndex(a => a.active);
+        if (activeIndex < 0 && accounts.length > 0) {
+          // fallback to first account
+          await manualRefreshSession(0);
+        } else if (activeIndex >= 0) {
+          await manualRefreshSession(activeIndex);
+        }
+      }
     },
     { type: 'separator' }
   ];

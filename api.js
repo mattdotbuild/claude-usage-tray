@@ -3,6 +3,22 @@ const crypto = require('crypto');
 
 const BASE_URL = 'claude.ai';
 
+// Build Cookie header: use full cookie string if available, fall back to sessionKey only
+function buildCookieHeader(sessionKey) {
+  if (typeof sessionKey === 'object' && sessionKey.cookies) {
+    return sessionKey.cookies;
+  }
+  return `sessionKey=${sessionKey}`;
+}
+
+// Extract the raw sessionKey string for backward compat
+function getSessionKeyValue(sessionKey) {
+  if (typeof sessionKey === 'object' && sessionKey.cookies) {
+    return sessionKey;
+  }
+  return sessionKey;
+}
+
 function makeRequest(path, sessionKey) {
   return new Promise((resolve, reject) => {
     const options = {
@@ -10,7 +26,7 @@ function makeRequest(path, sessionKey) {
       path: '/api' + path,
       method: 'GET',
       headers: {
-        'Cookie': `sessionKey=${sessionKey}`,
+        'Cookie': buildCookieHeader(sessionKey),
         'Accept': 'application/json',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       }
@@ -51,7 +67,7 @@ function makeRequestWithBody(method, path, sessionKey, body, accept = 'applicati
       path: '/api' + path,
       method: method,
       headers: {
-        'Cookie': `sessionKey=${sessionKey}`,
+        'Cookie': buildCookieHeader(sessionKey),
         'Accept': accept,
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(bodyStr),
@@ -95,7 +111,7 @@ function makeDeleteRequest(path, sessionKey) {
       path: '/api' + path,
       method: 'DELETE',
       headers: {
-        'Cookie': `sessionKey=${sessionKey}`,
+        'Cookie': buildCookieHeader(sessionKey),
         'Accept': 'application/json',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       }
@@ -135,14 +151,14 @@ async function getUsageData(sessionKey, orgId) {
 async function getUsage(sessionKey) {
   // Get organization ID first
   const orgs = await getOrganizations(sessionKey);
-  
+
   if (!orgs || orgs.length === 0) {
     throw new Error('No organizations found');
   }
-  
+
   const orgId = orgs[0].uuid;
   const usageData = await getUsageData(sessionKey, orgId);
-  
+
   return parseUsage(usageData);
 }
 
@@ -150,22 +166,22 @@ function parseUsage(data) {
   // API returns:
   // - five_hour.utilization = percentage USED in 5-hour window
   // - seven_day.utilization = percentage USED in 7-day window
-  
+
   let sessionUsedPct = 0;
   let weeklyUsedPct = 0;
-  
+
   if (data.five_hour && typeof data.five_hour.utilization === 'number') {
     sessionUsedPct = data.five_hour.utilization;
   }
-  
+
   if (data.seven_day && typeof data.seven_day.utilization === 'number') {
     weeklyUsedPct = data.seven_day.utilization;
   }
-  
+
   // Calculate percentage REMAINING
   const sessionRemaining = Math.max(0, Math.round(100 - sessionUsedPct));
   const weeklyRemaining = Math.max(0, Math.round(100 - weeklyUsedPct));
-  
+
   return {
     session: sessionRemaining,
     weekly: weeklyRemaining,
