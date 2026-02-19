@@ -1,4 +1,5 @@
 const https = require('https');
+const crypto = require('crypto');
 
 const BASE_URL = 'claude.ai';
 
@@ -29,6 +30,87 @@ function makeRequest(path, sessionKey) {
           } catch (e) {
             reject(new Error('Invalid JSON response'));
           }
+        }
+      });
+    });
+
+    req.on('error', reject);
+    req.setTimeout(10000, () => {
+      req.destroy();
+      reject(new Error('Request timeout'));
+    });
+    req.end();
+  });
+}
+
+function makeRequestWithBody(method, path, sessionKey, body, accept = 'application/json') {
+  return new Promise((resolve, reject) => {
+    const bodyStr = JSON.stringify(body);
+    const options = {
+      hostname: BASE_URL,
+      path: '/api' + path,
+      method: method,
+      headers: {
+        'Cookie': `sessionKey=${sessionKey}`,
+        'Accept': accept,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(bodyStr),
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        if (res.statusCode === 401 || res.statusCode === 403) {
+          reject(new Error('SESSION_EXPIRED'));
+        } else if (res.statusCode >= 400) {
+          reject(new Error(`HTTP ${res.statusCode}: ${data.substring(0, 200)}`));
+        } else {
+          try {
+            resolve(JSON.parse(data));
+          } catch (e) {
+            // Response may be SSE or empty - that's fine
+            resolve(data);
+          }
+        }
+      });
+    });
+
+    req.on('error', reject);
+    req.setTimeout(30000, () => {
+      req.destroy();
+      reject(new Error('Request timeout'));
+    });
+    req.write(bodyStr);
+    req.end();
+  });
+}
+
+function makeDeleteRequest(path, sessionKey) {
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: BASE_URL,
+      path: '/api' + path,
+      method: 'DELETE',
+      headers: {
+        'Cookie': `sessionKey=${sessionKey}`,
+        'Accept': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        if (res.statusCode === 401 || res.statusCode === 403) {
+          reject(new Error('SESSION_EXPIRED'));
+        } else if (res.statusCode >= 400) {
+          reject(new Error(`HTTP ${res.statusCode}`));
+        } else {
+          resolve();
         }
       });
     });
@@ -95,4 +177,47 @@ function parseUsage(data) {
   };
 }
 
-module.exports = { getUsage };
+async function sendHeartbeat(sessionKey) {
+  const orgs = await getOrganizations(sessionKey);
+  if (!orgs || orgs.length === 0) throw new Error('No organizations found');
+
+  const orgId = orgs[0].uuid;
+  const convId = crypto.randomUUID();
+
+  try {
+    // Create a new conversation
+    await makeRequestWithBody('POST', `/organizations/${orgId}/chat_conversations`, sessionKey, {
+      uuid: convId,
+      name: ''
+    });
+
+    // Send a minimal message to trigger token usage and start the 5h window
+    await makeRequestWithBody(
+      'POST',
+      `/organizations/${orgId}/chat_conversations/${convId}/completion`,
+      sessionKey,
+      {
+        prompt: 'hi',
+        timezone: 'UTC'
+      },
+      'text/event-stream'
+    );
+
+    // Delete the conversation to keep things clean
+    try {
+      await makeDeleteRequest(`/organizations/${orgId}/chat_conversations/${convId}`, sessionKey);
+    } catch (e) {
+      console.error('Heartbeat: failed to delete conversation:', e.message);
+    }
+
+    return true;
+  } catch (error) {
+    // Try to clean up even if the message failed
+    try {
+      await makeDeleteRequest(`/organizations/${orgId}/chat_conversations/${convId}`, sessionKey);
+    } catch (e) {}
+    throw error;
+  }
+}
+
+module.exports = { getUsage, sendHeartbeat };

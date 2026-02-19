@@ -1,6 +1,6 @@
 {
   "name": "claude-usage-tray",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "Windows/macOS system tray app showing Claude.ai Max plan usage",
   "main": "main.js",
   "scripts": {

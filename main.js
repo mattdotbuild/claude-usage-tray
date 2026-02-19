@@ -5,7 +5,7 @@ const { autoUpdater } = require('electron-updater');
 
 
 let config;
-const { getUsage } = require('./api');
+const { getUsage, sendHeartbeat } = require('./api');
 
 process.on('uncaughtException', (err) => {
   console.error('Uncaught exception:', err);
@@ -19,6 +19,8 @@ let tray = null;
 let refreshInterval = null;
 let settingsWindow = null;
 let appIcon = null;
+// Per-account heartbeat state: Map<accountIndex, { timeout, lastSent, pending }>
+let heartbeatState = new Map();
 
 // Generate app icon (matches the settings page logo)
 function createAppIcon() {
@@ -115,46 +117,47 @@ function createTrayIcon(percentage, showRemaining) {
   const size = 64;
   const canvas = createCanvas(size, size);
   const ctx = canvas.getContext('2d');
-  
-  // Solid dark background
-  ctx.fillStyle = '#0f0f1a';
-  ctx.fillRect(0, 0, size, size);
-  
+
+  // Transparent background - no box
+  ctx.clearRect(0, 0, size, size);
+
   // Color logic depends on display mode
   let color;
   if (showRemaining) {
-    // Showing remaining: high = good (green), low = bad (red)
     if (percentage < 20) {
-      color = '#ff4444'; // red - low remaining is bad
+      color = '#ff4444';
     } else if (percentage < 50) {
-      color = '#ffcc00'; // yellow
+      color = '#ffcc00';
     } else {
-      color = '#22ff55'; // green - high remaining is good
+      color = '#22ff55';
     }
   } else {
-    // Showing used: low = good (green), high = bad (red)
     if (percentage > 80) {
-      color = '#ff4444'; // red - high usage is bad
+      color = '#ff4444';
     } else if (percentage > 50) {
-      color = '#ffcc00'; // yellow
+      color = '#ffcc00';
     } else {
-      color = '#22ff55'; // green - low usage is good
+      color = '#22ff55';
     }
   }
-  
+
+  // Scale font to fill the icon
+  const text = String(percentage);
+  const fontSize = text.length <= 2 ? 64 : 42;
+
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = 'bold 42px Arial';
-  
-  // Draw black outline for contrast
+  ctx.font = `bold ${fontSize}px Arial`;
+
+  // Draw black outline for contrast against any taskbar color
   ctx.strokeStyle = '#000000';
-  ctx.lineWidth = 5;
-  ctx.strokeText(String(percentage), size / 2, size / 2 + 2);
-  
+  ctx.lineWidth = 6;
+  ctx.strokeText(text, size / 2, size / 2 + 2);
+
   // Draw the number
   ctx.fillStyle = color;
-  ctx.fillText(String(percentage), size / 2, size / 2 + 2);
-  
+  ctx.fillText(text, size / 2, size / 2 + 2);
+
   const buffer = canvas.toBuffer('image/png');
   return nativeImage.createFromBuffer(buffer);
 }
@@ -224,7 +227,13 @@ async function updateTray() {
 
     const icon = createTrayIcon(sessionDisplay, showRemaining);
     tray.setImage(icon);
-    tray.setToolTip(`Claude Usage${account.name ? ' - ' + account.name : ''}\nSession: ${sessionDisplay}% ${label}\nWeekly: ${weeklyDisplay}% ${label}${resetText}`);
+
+    let heartbeatText = '';
+    if (settings.heartbeatEnabled) {
+      heartbeatText = '\nHeartbeat: Active';
+    }
+
+    tray.setToolTip(`Claude Usage${account.name ? ' - ' + account.name : ''}\nSession: ${sessionDisplay}% ${label}\nWeekly: ${weeklyDisplay}% ${label}${resetText}${heartbeatText}`);
   } catch (error) {
     console.error('Failed to fetch usage:', error.message);
     tray.setImage(createErrorIcon());
@@ -245,6 +254,106 @@ function setupRefreshInterval() {
   const settings = config.get('settings') || {};
   const minutes = settings.refreshInterval || 5;
   refreshInterval = setInterval(updateTray, minutes * 60 * 1000);
+}
+
+// Schedule heartbeats for ALL accounts
+function scheduleAllHeartbeats() {
+  const settings = config.get('settings') || {};
+  if (!settings.heartbeatEnabled) {
+    clearAllHeartbeats();
+    return;
+  }
+
+  const accounts = config.get('accounts') || [];
+  accounts.forEach((account, index) => {
+    if (!account.sessionKey) return;
+    scheduleAccountHeartbeat(index, account);
+  });
+}
+
+async function scheduleAccountHeartbeat(index, account) {
+  const state = heartbeatState.get(index) || { timeout: null, lastSent: null, pending: false };
+
+  // Don't reschedule if a heartbeat is already pending
+  if (state.pending) return;
+
+  const settings = config.get('settings') || {};
+  if (!settings.heartbeatEnabled) return;
+
+  try {
+    const usage = await getUsage(account.sessionKey);
+    const now = Date.now();
+    const label = account.name || account.orgName || `Account ${index + 1}`;
+
+    if (state.timeout) {
+      clearTimeout(state.timeout);
+      state.timeout = null;
+    }
+
+    if (!usage.fiveHourResetsAt || new Date(usage.fiveHourResetsAt).getTime() <= now) {
+      // Window expired - send heartbeat soon
+      const minGap = 5 * 60 * 1000;
+      const delay = (state.lastSent && (now - state.lastSent < minGap))
+        ? minGap
+        : 30 * 1000; // 30 seconds
+
+      console.log(`Heartbeat [${label}]: window expired, sending in ${Math.round(delay / 1000)}s`);
+      state.pending = true;
+      state.timeout = setTimeout(() => performAccountHeartbeat(index), delay);
+    } else {
+      // Window active - schedule for after it expires (+2 min buffer)
+      const resetTime = new Date(usage.fiveHourResetsAt).getTime();
+      const delay = resetTime - now + (2 * 60 * 1000);
+      console.log(`Heartbeat [${label}]: window active, scheduling in ${Math.round(delay / 60000)}m`);
+      state.timeout = setTimeout(() => performAccountHeartbeat(index), delay);
+    }
+
+    heartbeatState.set(index, state);
+  } catch (error) {
+    const label = account.name || account.orgName || `Account ${index + 1}`;
+    console.error(`Heartbeat [${label}]: failed to check usage -`, error.message);
+  }
+}
+
+async function performAccountHeartbeat(index) {
+  const accounts = config.get('accounts') || [];
+  const account = accounts[index];
+  if (!account || !account.sessionKey) return;
+
+  const settings = config.get('settings') || {};
+  if (!settings.heartbeatEnabled) return;
+
+  const state = heartbeatState.get(index) || { timeout: null, lastSent: null, pending: false };
+  state.pending = false;
+  state.timeout = null;
+  const label = account.name || account.orgName || `Account ${index + 1}`;
+
+  try {
+    console.log(`Heartbeat [${label}]: sending ping...`);
+    await sendHeartbeat(account.sessionKey);
+    state.lastSent = Date.now();
+    console.log(`Heartbeat [${label}]: success`);
+    heartbeatState.set(index, state);
+
+    // Refresh tray if this is the active account
+    if (account.active) await updateTray();
+
+    // Schedule next heartbeat for this account
+    scheduleAccountHeartbeat(index, account);
+  } catch (error) {
+    console.error(`Heartbeat [${label}]: failed -`, error.message);
+    heartbeatState.set(index, state);
+    // Retry in 5 minutes
+    state.timeout = setTimeout(() => performAccountHeartbeat(index), 5 * 60 * 1000);
+    heartbeatState.set(index, state);
+  }
+}
+
+function clearAllHeartbeats() {
+  for (const [, state] of heartbeatState) {
+    if (state.timeout) clearTimeout(state.timeout);
+  }
+  heartbeatState.clear();
 }
 
 // Open login window for adding account
@@ -378,6 +487,7 @@ function setupIPC() {
       showRemaining: config.get('settings')?.showRemaining !== false,
       refreshInterval: config.get('settings')?.refreshInterval || 5,
       startOnLogin: app.getLoginItemSettings().openAtLogin,
+      heartbeatEnabled: config.get('settings')?.heartbeatEnabled || false,
       accounts: config.get('accounts') || []
     };
   });
@@ -398,6 +508,15 @@ function setupIPC() {
 
     if (key === 'refreshInterval') {
       setupRefreshInterval();
+    }
+
+    if (key === 'heartbeatEnabled') {
+      if (value) {
+        scheduleAllHeartbeats();
+      } else {
+        clearAllHeartbeats();
+      }
+      updateTray();
     }
 
     // Refresh display immediately when changing display mode
@@ -585,6 +704,7 @@ app.whenReady().then(async () => {
   
   await updateTray();
   setupRefreshInterval();
+  scheduleAllHeartbeats();
 
   // Setup auto-updater
   setupAutoUpdater();
@@ -646,6 +766,7 @@ app.on('before-quit', () => {
   if (refreshInterval) {
     clearInterval(refreshInterval);
   }
+  clearAllHeartbeats();
 });
 
 const gotTheLock = app.requestSingleInstanceLock();

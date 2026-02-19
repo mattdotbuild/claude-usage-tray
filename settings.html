@@ -179,6 +179,7 @@
     .section:nth-child(1) { animation-delay: 0.1s; }
     .section:nth-child(2) { animation-delay: 0.2s; }
     .section:nth-child(3) { animation-delay: 0.3s; }
+    .section:nth-child(4) { animation-delay: 0.4s; }
 
     @keyframes sectionReveal {
       from {
@@ -848,6 +849,28 @@
 
       <section class="section">
         <div class="section-header">
+          <span class="section-icon">♡</span>
+          <span class="section-title">Heartbeat</span>
+          <div class="section-line"></div>
+        </div>
+        <div class="card">
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Auto-reset heartbeat</div>
+              <div class="setting-description">Ping Claude every 5 hours to keep the reset window cycling, even when idle</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="heartbeatEnabled">
+              <div class="toggle-track">
+                <div class="toggle-thumb"></div>
+              </div>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-header">
           <span class="section-icon">◉</span>
           <span class="section-title">Accounts</span>
           <div class="section-line"></div>
@@ -883,6 +906,7 @@
       document.getElementById('showRemaining').checked = settings.showRemaining !== false;
       document.getElementById('refreshInterval').value = settings.refreshInterval || '5';
       document.getElementById('startOnLogin').checked = settings.startOnLogin || false;
+      document.getElementById('heartbeatEnabled').checked = settings.heartbeatEnabled || false;
       renderAccounts(settings.accounts || []);
     });
 
@@ -897,6 +921,10 @@
 
     document.getElementById('startOnLogin').addEventListener('change', (e) => {
       ipcRenderer.send('update-setting', { key: 'startOnLogin', value: e.target.checked });
+    });
+
+    document.getElementById('heartbeatEnabled').addEventListener('change', (e) => {
+      ipcRenderer.send('update-setting', { key: 'heartbeatEnabled', value: e.target.checked });
     });
 
     // Add account

@@ -15,7 +15,8 @@ A Windows system tray app that shows your Claude.ai Pro/Max plan Opus-specific u
   - 🟡 Yellow: 20-50% remaining
   - 🔴 Red: <20% remaining
 - **Detailed tooltip** - Hover to see session stats, weekly stats, and reset time
-- **Multiple accounts** - Switch between different Claude accounts
+- **Heartbeat auto-reset** - Automatically pings Claude every 5 hours to keep the reset window cycling, even when idle. Maximizes your effective coding time by ensuring you're always mid-cycle when you sit down to work.
+- **Multiple accounts** - Switch between different Claude accounts with independent heartbeat timers
 - **Auto-refresh** - Configurable refresh interval (1, 5, 10, or 15 minutes)
 - **Auto-updates** - Automatically notifies you when new versions are available
 - **Start on login** - Optionally launch when Windows starts
@@ -71,11 +72,23 @@ npm run build
 - **Show remaining percentage** - Toggle between showing remaining vs used
 - **Refresh interval** - How often to auto-update (1-15 minutes)
 - **Start on login** - Launch automatically when Windows starts
+- **Heartbeat auto-reset** - Toggle to keep the 5-hour reset window cycling across all accounts (see below)
 - **Accounts** - Manage multiple Claude accounts
   - Click an account to switch to it
   - Click the name to rename it
   - Click ✕ to remove it
   - Click "Add Account" to add another
+
+### Heartbeat Auto-Reset
+
+Claude's 5-hour usage window starts when you first send a message. With the heartbeat feature enabled, the app automatically sends a minimal ping to Claude every 5 hours to keep the window cycling in the background.
+
+**Why?** If your 5-hour window resets at 8am and you start coding at 10am, you'd normally have a full 5 hours until your next reset. With heartbeat, the app would have already started a new window at 8am, so you're 2 hours into the cycle - meaning your next reset is only 3 hours away, giving you effectively 8 hours of coding time before you'd need to wait for a full reset.
+
+- Works independently for each account
+- Creates a temporary conversation, sends a tiny message, then deletes it
+- Uses negligible tokens
+- Disabled by default - enable in Settings > Heartbeat
 
 ## How It Works
 
